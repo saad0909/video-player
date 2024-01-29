@@ -61,6 +61,7 @@ def addshutter():
                 f.setGeometry(11, 59, 1000, 720)
                 f.show()
                 window.shutters.append(f)
+                window.video_app.toggleMute()
         else:
             found = False
             for x in timeframes:
@@ -70,6 +71,7 @@ def addshutter():
                 for i in window.shutters:
                     i.hide()
                     window.shutters = []
+                    window.video_app.toggleMute()
 
 class videothread(QThread):
     update_signal = pyqtSignal(int)
@@ -142,9 +144,27 @@ class VideoPlayer(QWidget):
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.videoWidget)
         self.layout.addWidget(self.slider)
-        self.layout.addLayout(controlLayout)
+        #self.layout.addLayout(controlLayout)
         #layout.addWidget(self.lb)
 
+        #############################################################
+        # Add volume control
+        self.volumeSlider = QSlider(Qt.Horizontal)
+        self.volumeSlider.setRange(0, 100)
+        self.volumeSlider.setValue(50)
+        self.volumeSlider.setFixedWidth(100)
+        self.volumeSlider.valueChanged.connect(self.setVolume)
+
+        # # Add volume control to layout
+        self.layout.addWidget(self.volumeSlider)
+
+        # # Add mute button
+        # self.muteButton = QPushButton('Mute')
+        # self.muteButton.setFixedWidth(100)
+        # self.muteButton.clicked.connect(self.toggleMute)
+        # self.layout.addWidget(self.muteButton)
+        ############################################################
+        self.layout.addLayout(controlLayout)  
         #self.setLayout(layout)
 
         self.mediaPlayer.setVideoOutput(self.videoWidget)
@@ -262,6 +282,16 @@ class VideoPlayer(QWidget):
         formatted_time = f"{current_time // 60}:{current_time % 60:02d} / {duration // 60}:{duration % 60:02d}"
         self.timeLabel.setText(formatted_time)
 
+    def setVolume(self, volume):
+        self.mediaPlayer.setVolume(volume)
+
+    def toggleMute(self):
+        if self.mediaPlayer.isMuted():
+            self.mediaPlayer.setMuted(False)
+            #self.muteButton.setText('Mute')
+        else:
+            self.mediaPlayer.setMuted(True)
+            #self.muteButton.setText('Unmute')
 
 class CustomTitleBar(QWidget):
     closeSignal = pyqtSignal()
