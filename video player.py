@@ -7,7 +7,6 @@ from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.Qt import QMouseEvent
 import threading
 import time
-import pandas
 
 end = False
 
