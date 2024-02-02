@@ -1,24 +1,27 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMainWindow,  QFrame, QLabel,  QFileDialog, QSlider
-from PyQt5.QtCore import Qt, pyqtSignal, QRectF, QUrl, QThread, QTimer
-from PyQt5.QtGui import QIcon, QPixmap,  QRegion, QPainterPath
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtCore import Qt, pyqtSignal, QRectF, QUrl, QThread
+from PyQt5.QtGui import QPixmap,  QRegion, QPainterPath
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QSoundEffect
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.Qt import QMouseEvent
-import threading
 import time
 
 end = False
 
 censor_pressed = False
-timeframes = []
+violence_timeframes = []
+beeping_timeframes = []
+mute_timeframes = []
 emitted = False
 video_path = ""
 
 class CensorThread(QThread):
 
     def run(self):
-        global timeframes
+        global violence_timeframes
+        global beeping_timeframes
+        global mute_timeframes
 
         r1 = False
         time.sleep(1)
@@ -28,11 +31,15 @@ class CensorThread(QThread):
                     r1 = True
                     #time.sleep(10)
                     #model code here
-                    timeframes = [(10, 14), (4,7), (20, 25), (50, 55)]
+                    beeping_timeframes = [(0,3), (16, 18)]
+                    violence_timeframes = [(10, 14), (20, 25), (50, 55)]
+                    mute_timeframes = list(set(beeping_timeframes) | set(violence_timeframes))
                 
 current = 0
+current2 = 0
+current3 = 0
 
-class timethread(QThread):
+class frame_hide_thread(QThread):
     update_signal = pyqtSignal(int)
 
     def run(self):
@@ -48,11 +55,73 @@ class timethread(QThread):
                 if censor_pressed:
                     self.update_signal.emit(current)
             prev = current
+
+class audio_beeping_thread(QThread):
+    update_signal = pyqtSignal(int)
+
+    def run(self):
+        global current2
+        global window
+        global censor_pressed
+        time.sleep(1)
+        prev = current2
+        while not end:
+            current2 = window.video_app.mediaPlayer.position() // 1000
+            if current2 != prev:
+                if censor_pressed:
+                    self.update_signal.emit(current2)
+            prev = current2
+
+class mute_thread(QThread):
+    update_signal = pyqtSignal(int)
+    
+    def run(self):
+        global current3
+        global window
+        global censor_pressed
+        time.sleep(1)
+        prev = current3
+        while not end:
+            current3 = window.video_app.mediaPlayer.position() // 1000
+            if current3 != prev:
+                if censor_pressed:
+                    self.update_signal.emit(current3)
+            prev = current3
+
+def mute_sound():
+    global current3
+    global mute_timeframes
+    for i in mute_timeframes:
+        if current >= i[0] and current <= i[1]:
+            window.video_app.mediaPlayer.setMuted(True)
+        else:
+            found = False
+            for x in mute_timeframes:
+                if current2 >= x[0] and current2 <= x[1]:
+                    found = True
+            if found == False:
+                window.video_app.mediaPlayer.setMuted(False)
+
+def beep_sound():
+    global current2
+    global beeping_timeframes
+    for i in beeping_timeframes:
+        if current >= i[0] and current <= i[1]:
+            #window.video_app.mediaPlayer.setMuted(True)
+            window.video_app.beep_sound.play()
+        else:
+            found = False
+            for x in beeping_timeframes:
+                if current2 >= x[0] and current2 <= x[1]:
+                    found = True
+            if found == False:
+                #window.video_app.mediaPlayer.setMuted(False)
+                window.video_app.beep_sound.stop()
             
 def addshutter():
    # print("shutter called")
     global current
-    for i in timeframes:
+    for i in violence_timeframes:
         if current >= i[0] and current <= i[1]:
             #print("yes")
             if len(window.shutters) == 0:
@@ -61,39 +130,19 @@ def addshutter():
                 f.setGeometry(11, 59, 1000, 720)
                 f.show()
                 window.shutters.append(f)
-                window.video_app.toggleMute()
+                #window.video_app.mediaPlayer.setMuted(True)
         else:
             found = False
-            for x in timeframes:
+            for x in violence_timeframes:
                 if current >= x[0] and current <= x[1]:
                     found = True
             if found == False:
                 for i in window.shutters:
                     i.hide()
                     window.shutters = []
-                    window.video_app.toggleMute()
+                    print("opening voice")
+                    #window.video_app.mediaPlayer.setMuted(False)
 
-class videothread(QThread):
-    update_signal = pyqtSignal(int)
-
-    def run(self):
-        global window
-        global censor_pressed
-        global timeframes
-        time.sleep(1)
-        while(1):
-                current = window.video_app.mediaPlayer.position() // 1000
-                for i in timeframes:
-                    if current >= i[0] and current <= i[1]:
-                        window.video_app.shutter.setGeometry(11, 11, 1000, 720)
-                    else:
-                        found = False
-                        for x in timeframes:
-                            if current >= x[0] and current <= x[1]:
-                                found = True
-                        if found == False:
-                            window.video_app.shutter.setGeometry(11, 11, 1, 1)
-            
 class VideoPlayer(QWidget):
     def __init__(self):
         super().__init__()
@@ -108,7 +157,7 @@ class VideoPlayer(QWidget):
 
         self.videoWidget = QVideoWidget()
         self.videoWidget.setFixedSize(1000, 720)
-        self.videoWidget.setStyleSheet("background-color: black;")
+        self.videoWidget.setStyleSheet("background-color: rgba(30,30,30,0.5);")
         self.videoWidget.setGeometry(0, 0, 1000, 720)
 
 
@@ -191,15 +240,18 @@ class VideoPlayer(QWidget):
         # Connect slot for updating timeLabel
         self.mediaPlayer.positionChanged.connect(self.updateTimeLabel)
 
-        self.shutter = QLabel(self)
-        self.shutter.setStyleSheet("background-color: rgba(255,0,0,1);")
-        self.shutter.setGeometry(11, 11, 1, 1)
+        # self.shutter = QLabel(self)
+        # self.shutter.setStyleSheet("background-color: rgba(255,0,0,1);")
+        # self.shutter.setGeometry(11, 11, 1, 1)
         #self.shutter.setParent(None)
+
+        self.beep_sound = QSoundEffect()
+        self.beep_sound.setSource(QUrl.fromLocalFile('beep.wav'))
 
         style= """
         QPushButton {
-            background-color: black;
-            border: none;
+            background-color: rgba(20, 20, 20, 0.5);
+            border: 1px solid tomato;
             color: white;
             padding: 4px;
             margin: 0px;
@@ -412,7 +464,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.resize(1300, 800)
-        self.setStyleSheet("background-color: #8cbfe2; color: white; margin:0;padding:0")
+        #self.setStyleSheet("background-color: #8cbfe2; color: white; margin:0;padding:0")
+        self.setStyleSheet("background-color: black; color: white; margin:0;padding:0")
         # Create custom title bar
         title_bar = CustomTitleBar()
         title_bar.closeSignal.connect(self.closeall)  # Connect close signal to close the main window
@@ -493,14 +546,28 @@ if __name__ == "__main__":
     model_thread = CensorThread()
     model_thread.start()
 
-    time_thread = timethread()
-    time_thread.update_signal.connect(addshutter)
-    time_thread.start()
+    frame_thread = frame_hide_thread()
+    frame_thread.update_signal.connect(addshutter)
+    frame_thread.start()
 
-    sys.exit(app.exec_())
+    audio_thread = audio_beeping_thread()
+    audio_thread.update_signal.connect(beep_sound)
+    audio_thread.start()
+
+    mute_thread = mute_thread()
+    mute_thread.update_signal.connect(mute_sound)
+    mute_thread.start()
+
+    app.exec_()
 
     model_thread.quit()
     model_thread.wait()
 
-    time_thread.quit()
-    time_thread.wait()
+    frame_thread.quit()
+    frame_thread.wait()
+
+    audio_thread.quit()
+    audio_thread.wait()
+
+    mute_thread.quit()
+    mute_thread.wait()
