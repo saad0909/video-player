@@ -6,6 +6,8 @@ from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QSoundEffect
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.Qt import QMouseEvent
 import time
+import extract_audio as ea
+import speech_to_text as stt
 
 end = False
 
@@ -15,6 +17,7 @@ beeping_timeframes = []
 mute_timeframes = []
 emitted = False
 video_path = ""
+r1 = False
 
 class CensorThread(QThread):
 
@@ -22,15 +25,17 @@ class CensorThread(QThread):
         global violence_timeframes
         global beeping_timeframes
         global mute_timeframes
+        global video_path
+        global r1
 
-        r1 = False
         time.sleep(1)
         while not end:
             if censor_pressed:
                 if not r1:
                     r1 = True
-                    #time.sleep(10)
-                    #model code here
+                    print("censoring video...")
+                    # video model code here
+                    print("censoring video done")
                     beeping_timeframes = [(0,3), (16, 18)]
                     violence_timeframes = [(10, 14), (20, 25), (50, 55)]
                     mute_timeframes = list(set(beeping_timeframes) | set(violence_timeframes))
@@ -38,6 +43,25 @@ class CensorThread(QThread):
 current = 0
 current2 = 0
 current3 = 0
+
+prev_video_path = ""
+
+class audiothread(QThread):
+    global censor_pressed
+    global video_path
+    global end
+
+    def run(self):
+        censored = False
+        while not end:
+            if censor_pressed:
+                if not censored:
+                    censored = True
+                    print("censoring audio....")
+                    audio_file = ea.extract_aduio(video_path)
+                    text = stt.speech_to_text(audio_file)
+                    # audio model code here
+                    print("censoring audio done")
 
 class frame_hide_thread(QThread):
     update_signal = pyqtSignal(int)
@@ -447,12 +471,25 @@ class CustomTitleBar(QWidget):
         self.minimizeSignal.emit()
 
 def censorvideo():
+    global prev_video_path
+    global violence_timeframes
+    global beeping_timeframes
+    global mute_timeframes
+    global video_path
     global censor_pressed
-    global timeframes
-    censor_pressed = True
+    global r1
 
-def video_model():
-    pass
+    if video_path != "":
+        if prev_video_path == "":
+            prev_video_path = video_path
+        elif video_path != "" and video_path != prev_video_path:
+            prev_video_path = video_path
+            violence_timeframes = []
+            beeping_timeframes = []
+            mute_timeframes = []
+            r1 = False
+        censor_pressed = True
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
