@@ -6,6 +6,6 @@ git config --global user.name "saad0909"
 
 git add .
 git commit -m "new user"
-git push origin RazaMehdi-patch-1
+git push origin main
 
 pause
